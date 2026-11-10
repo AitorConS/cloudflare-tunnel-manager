@@ -10,6 +10,7 @@ export interface Status {
   cloudflared?: { available: boolean; version: string }
 }
 export interface PermCheck { key: string; ok: boolean; detail: string; optional: boolean }
+export interface UpdateInfo { current: string; latest: string; url: string; updateAvailable: boolean; canSelfUpdate: boolean; why: string }
 export interface Account { id: string; name: string }
 export interface Zone { id: string; name: string; status: string }
 
@@ -113,6 +114,8 @@ export const api = {
   configureCloudflare: (token: string, accountId = '') =>
     call<{ account: Account | null; accounts: Account[] | null }>('PUT', '/cloudflare', { token, accountId }),
   checkCloudflare: () => call<PermCheck[]>('GET', '/cloudflare/check'),
+  checkUpdate: (fresh = false) => call<UpdateInfo>('GET', `/update${fresh ? '?fresh=1' : ''}`),
+  applyUpdate: () => call<{ version: string }>('POST', '/update'),
   zones: () => call<Zone[]>('GET', '/zones'),
   accessStatus: () => call<{ available: boolean; error: string }>('GET', '/access-status'),
 

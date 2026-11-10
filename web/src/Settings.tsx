@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { api, type Account, type PermCheck, type Status } from './api'
-import { Field, useToast } from './ui'
+import { api, type Account, type PermCheck, type Status, type UpdateInfo } from './api'
+import { Confirm, Field, useToast } from './ui'
 
 // The exact values to pick in Cloudflare's "Create Custom Token" form.
 const permissions: { key: string; scope: string; name: string; level: string; why: string; optional?: boolean }[] = [
@@ -80,13 +80,84 @@ export function SettingsPage({ status, onChange }: { status: Status; onChange: (
       </section>
 
       <section className="panel">
-        <h2>About</h2>
+        <h2>About and updates</h2>
         <dl className="kv">
           <dt>Tunnel Manager</dt><dd>{status.version}</dd>
           <dt>cloudflared</dt><dd>{status.cloudflared?.available ? status.cloudflared.version : 'not installed'}</dd>
         </dl>
+        <UpdatePanel />
       </section>
     </>
+  )
+}
+
+function UpdatePanel() {
+  const [info, setInfo] = useState<UpdateInfo | null>(null)
+  const [error, setError] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [installing, setInstalling] = useState('')
+
+  const check = useCallback(async (fresh: boolean) => {
+    setChecking(true)
+    setError('')
+    try {
+      setInfo(await api.checkUpdate(fresh))
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setChecking(false)
+    }
+  }, [])
+  useEffect(() => { check(false) }, [check])
+
+  async function install() {
+    setConfirming(false)
+    setError('')
+    try {
+      const { version } = await api.applyUpdate()
+      setInstalling(version)
+      // The server restarts on the new binary: wait for it, then reload the UI.
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 1500))
+        try {
+          if ((await api.status()).version === version) return location.reload()
+        } catch { /* still restarting */ }
+      }
+      setInstalling('')
+      setError(`The server did not come back on ${version} within 90 seconds. Check the service log on the machine.`)
+    } catch (e: any) {
+      setError(e.message)
+    }
+  }
+
+  return (
+    <div className="update">
+      {installing ? (
+        <p className="notice notice-info">Installing {installing} and restarting. This page reloads when the server is back.</p>
+      ) : (
+        <>
+          <div className="connected">
+            {info && (info.updateAvailable
+              ? <span className="state state-warn">Version {info.latest} is available</span>
+              : <span className="state state-ok">Up to date{info.latest ? ` (latest release: ${info.latest})` : ''}</span>)}
+            <span className="push" />
+            {info?.url && <a className="btn btn-small" href={info.url} target="_blank" rel="noreferrer">Release notes</a>}
+            <button className="btn btn-small" onClick={() => check(true)} disabled={checking}>{checking ? 'Checking…' : 'Check for updates'}</button>
+            {info?.canSelfUpdate && <button className="btn btn-small btn-primary" onClick={() => setConfirming(true)}>Update now</button>}
+          </div>
+          {info?.why && <p className="field-hint">{info.updateAvailable ? `It cannot be installed from here: ${info.why}.` : `${info.why[0].toUpperCase()}${info.why.slice(1)}.`}</p>}
+        </>
+      )}
+      {error && <p className="notice notice-error">{error}</p>}
+      {confirming && info && (
+        <Confirm title={`Update to ${info.latest}`} action="Update now" onClose={() => setConfirming(false)} onConfirm={install}
+          body={<p>
+            The panel downloads the release from GitHub, verifies its checksum, replaces itself and restarts. Tunnels that run
+            on this server reconnect during the restart, so their hosts are unreachable for a few seconds.
+          </p>} />
+      )}
+    </div>
   )
 }
 

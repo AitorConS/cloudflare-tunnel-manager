@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"tunnelmanager/internal/runner"
 	"tunnelmanager/internal/secret"
 	"tunnelmanager/internal/store"
+	"tunnelmanager/internal/updater"
 	"tunnelmanager/internal/webui"
 )
 
@@ -31,6 +33,10 @@ func env(key, def string) string {
 }
 
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
+		fmt.Println("tunnel-manager", version)
+		return
+	}
 	listen := env("CTM_LISTEN", ":8088")
 	dataDir := env("CTM_DATA_DIR", "./data")
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
@@ -65,9 +71,23 @@ func main() {
 	if static == nil {
 		log.Printf("warning: web UI not built; serving the API only")
 	}
+	// In-place updates are opt-in: the systemd unit sets CTM_SELF_UPDATE and
+	// restarts the process when it exits; container images are replaced instead.
+	restart := make(chan struct{}, 1)
+	upd := &updater.Updater{
+		Repo:    env("CTM_UPDATE_REPO", "AitorConS/cloudflare-tunnel-manager"),
+		Current: version,
+		Enabled: os.Getenv("CTM_SELF_UPDATE") == "1",
+		Restart: func() {
+			select {
+			case restart <- struct{}{}:
+			default:
+			}
+		},
+	}
 	srv := &http.Server{
 		Addr:              listen,
-		Handler:           (&httpapi.Server{Svc: svc, Static: static, Version: version}).Handler(),
+		Handler:           (&httpapi.Server{Svc: svc, Static: static, Version: version, Updater: upd}).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
@@ -79,8 +99,12 @@ func main() {
 			log.Fatalf("http: %v", err)
 		}
 	}()
-	<-ctx.Done()
-	log.Printf("shutting down…")
+	select {
+	case <-ctx.Done():
+		log.Printf("shutting down…")
+	case <-restart:
+		log.Printf("update installed: exiting so the service manager starts the new version")
+	}
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdown)

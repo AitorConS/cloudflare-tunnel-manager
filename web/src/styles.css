@@ -237,6 +237,9 @@ details > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
 .plain-list li { margin-bottom: 8px; }
 .perm-table .btn { margin-left: 6px; min-height: 26px; padding: 1px 8px; font-size: 0.8125rem; }
 
+.update { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.update .connected { margin-bottom: 6px; }
+
 /* ---- auth ---- */
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .auth-card { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--rule); border-top: 6px solid var(--signal); border-radius: var(--radius); padding: 28px; }

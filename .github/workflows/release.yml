@@ -1,0 +1,44 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds the Linux binaries and publishes a GitHub
+# release. Installed panels find it through "Check for updates".
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build the web UI
+        run: cd web && pnpm install --frozen-lockfile && pnpm build
+      - name: Test
+        run: go test ./...
+      - name: Build binaries
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir dist
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=${TAG}" -o "dist/ctm-linux-${arch}" ./cmd/ctm
+          done
+          cd dist && sha256sum ctm-linux-* > checksums.txt
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes

@@ -24,6 +24,7 @@ import (
 	"tunnelmanager/internal/core"
 	"tunnelmanager/internal/runner"
 	"tunnelmanager/internal/store"
+	"tunnelmanager/internal/updater"
 )
 
 const (
@@ -36,6 +37,7 @@ type Server struct {
 	Svc     *core.Service
 	Static  fs.FS // built web UI; nil serves the API only
 	Version string
+	Updater *updater.Updater
 
 	limiter loginLimiter
 }
@@ -59,6 +61,8 @@ func (s *Server) Handler() http.Handler {
 	api("PUT /api/password", s.changePassword)
 	api("PUT /api/cloudflare", s.configureCloudflare)
 	api("GET /api/cloudflare/check", s.checkCloudflare)
+	api("GET /api/update", s.checkUpdate)
+	api("POST /api/update", s.applyUpdate)
 	api("GET /api/zones", s.zones)
 	api("GET /api/access-status", s.accessStatus)
 
@@ -456,6 +460,31 @@ func (s *Server) checkCloudflare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, checks)
+}
+
+func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) {
+	info, err := s.Updater.Check(r.Context(), r.URL.Query().Get("fresh") == "1")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "update", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// applyUpdate installs the latest release and then restarts the process; the
+// managed tunnels reconnect once the new version is up.
+func (s *Server) applyUpdate(w http.ResponseWriter, r *http.Request) {
+	ver, err := s.Updater.Apply(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "update", err.Error())
+		return
+	}
+	log.Printf("updated to %s by %s", ver, userOf(r).Username)
+	writeJSON(w, http.StatusOK, map[string]any{"version": ver})
+	go func() {
+		time.Sleep(500 * time.Millisecond) // let the response reach the browser
+		s.Updater.Restart()
+	}()
 }
 
 func (s *Server) zones(w http.ResponseWriter, r *http.Request) {

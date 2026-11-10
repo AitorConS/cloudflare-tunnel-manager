@@ -50,6 +50,42 @@ The destination address is resolved from wherever the connector runs. Inside the
 container itself: use the machine's IP on your network (`192.168.1.10`), `host.docker.internal` for services on the
 same machine, or the container name if you share a Docker network with it.
 
+## Install on Proxmox VE (LXC)
+
+Run this in the Proxmox host shell. It creates a small unprivileged Debian container (1 core, 512 MB RAM, 2 GB disk),
+installs `cloudflared` and the panel as a systemd service, and prints the panel's address:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/AitorConS/cloudflare-tunnel-manager/main/proxmox/ct.sh)"
+```
+
+It shows the settings and asks before creating anything. Override any of them with environment variables, for example
+`CTID=120 MEMORY=1024 BRIDGE=vmbr1 IP=192.168.1.50/24 GATEWAY=192.168.1.1` before `bash`. See the top of
+[`proxmox/ct.sh`](proxmox/ct.sh) for the full list.
+
+### Any Debian or Ubuntu machine
+
+The container script only wraps the installer, which also works on a VM or a bare-metal server (as root, with systemd):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/AitorConS/cloudflare-tunnel-manager/main/proxmox/install.sh | bash
+```
+
+The binary goes to `/opt/tunnel-manager`, the data to `/var/lib/tunnel-manager`, and the service is `tunnel-manager`
+(`journalctl -u tunnel-manager -f`). Extra settings go in `/etc/default/tunnel-manager`.
+
+## Updating
+
+- **From the panel** (installs made with the scripts above): *Settings → About and updates → Check for updates → Update now*.
+  The panel downloads the latest [release](https://github.com/AitorConS/cloudflare-tunnel-manager/releases), verifies
+  its SHA-256 checksum, checks that the new binary starts, replaces itself and restarts. Tunnels that run on that
+  machine reconnect within a few seconds.
+- **From a shell**: `tunnel-manager-update` (on Proxmox: `pct exec <id> -- tunnel-manager-update`). This also updates
+  `cloudflared`, which the panel button does not.
+- **Docker**: the panel only tells you a new version exists. Pull the repository and run `docker compose up -d --build`.
+
+In-place updates are enabled by `CTM_SELF_UPDATE=1`, which the installer sets in the systemd unit.
+
 ## Migrating from Nginx Proxy Manager
 
 1. Create each host pointing directly at the service (or at your NPM, `http://IP:80`, if you want to keep its rules).
@@ -66,6 +102,7 @@ The admin panel (port 8088) is meant for your local network. If you publish it t
 | `CTM_LISTEN` | `:8088` | Listen address |
 | `CTM_DATA_DIR` | `./data` (`/data` in Docker) | Database and key |
 | `CTM_SECRET_KEY` | — | Passphrase used to encrypt the tokens; if unset, `data/secret.key` is generated |
+| `CTM_SELF_UPDATE` | — | Set to `1` to allow updating the binary from the panel (set by the installer) |
 | `CTM_CLOUDFLARED_BIN` | `cloudflared` | Path to the connector binary |
 
 ## How secrets are stored
@@ -93,3 +130,12 @@ make dev-web    # Vite with hot reload on :5173
 
 To work on the UI without a real account: `go run ./cmd/fakecf` and start the server with
 `CTM_CF_API_BASE=http://127.0.0.1:8099`.
+
+## Releasing
+
+Pushing a tag such as `v0.2.0` runs the release workflow, which builds the Linux binaries (amd64, arm64) and publishes
+them with a `checksums.txt`. Installed panels pick the new version up from there.
+
+## License
+
+[MIT](LICENSE)
