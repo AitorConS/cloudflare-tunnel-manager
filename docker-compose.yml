@@ -1,0 +1,16 @@
+services:
+  tunnel-manager:
+    build: .
+    image: cloudflare-tunnel-manager
+    container_name: tunnel-manager
+    restart: unless-stopped
+    ports:
+      # Admin panel. Only needed on your local network: do not forward it on your router.
+      - "8088:8088"
+    volumes:
+      - ./data:/data
+    extra_hosts:
+      # Lets you use host.docker.internal as the destination for services on this same machine.
+      - "host.docker.internal:host-gateway"
+    # environment:
+    #   CTM_SECRET_KEY: "long passphrase"   # optional: your own encryption key instead of data/secret.key

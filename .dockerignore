@@ -1,0 +1,5 @@
+.git
+data
+web/node_modules
+internal/webui/dist
+**/.DS_Store
