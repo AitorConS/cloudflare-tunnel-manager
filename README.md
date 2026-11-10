@@ -1,6 +1,6 @@
 # Cloudflare Tunnel Manager
 
-Status: early project. Token permissions have been checked against a real Cloudflare account and the Docker image builds and starts; creating tunnels and hosts has only been tested against a simulated API, and the Proxmox installer has not been run on a real Proxmox host yet.
+Status: early project. Token permissions have been checked against a real Cloudflare account; the installer, the in-panel update and the Docker image have been tested in containers. Creating tunnels and hosts has only been tested against a simulated API, and the Proxmox container script has not been run on a real Proxmox host yet.
 
 A self-hosted panel, in the style of Nginx Proxy Manager, for publishing services on your network through
 **Cloudflare Tunnels**: you add a host (`app.yourdomain.com` → `http://192.168.1.10:8080`) and the panel creates the
